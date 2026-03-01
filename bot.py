@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import os
+import aiohttp
 from aiohttp import web
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,12 +16,27 @@ API_HASH  = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 PORT      = int(os.environ.get("PORT", "8080"))
 
+
+async def clear_updates():
+    """Drop all pending updates so Pyrogram starts clean."""
+    base = f"https://api.telegram.org/bot{BOT_TOKEN}"
+    async with aiohttp.ClientSession() as session:
+        # delete webhook + drop pending
+        async with session.get(f"{base}/deleteWebhook?drop_pending_updates=true") as r:
+            data = await r.json()
+            logger.info(f"deleteWebhook: {data}")
+        # confirm zero pending
+        async with session.get(f"{base}/getWebhookInfo") as r:
+            data = await r.json()
+            logger.info(f"webhookInfo: {data['result']}")
+
+
 app = Client(
     name="CosmicBotz",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    in_memory=True,       # no session file — always fresh
+    in_memory=True,
 )
 
 
@@ -47,12 +63,12 @@ async def health_server():
 
 
 async def main():
+    await clear_updates()   # flush stuck updates FIRST
     await health_server()
     await app.start()
     me = await app.get_me()
     logger.info(f"✅ Bot started as @{me.username}")
-    logger.info("Waiting for messages...")
-    await asyncio.Event().wait()
+    await idle()
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+import asyncio
 import logging
 from datetime import datetime
 from aiohttp import web
@@ -17,6 +18,20 @@ logging.basicConfig(
 LOGGER = logging.getLogger
 
 
+# ── Web server (starts FIRST so Render health check passes) ───────────────────
+web_app = web.Application()
+web_app.router.add_get("/", lambda r: web.Response(text="CosmicBotz Running!"))
+web_app.router.add_get("/health", lambda r: web.Response(text="OK"))
+
+
+async def start_web():
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", PORT).start()
+    LOGGER(__name__).info(f"🌐 Web server running on port {PORT}")
+
+
+# ── Bot ───────────────────────────────────────────────────────────────────────
 class Bot(Client):
     def __init__(self):
         super().__init__(
@@ -44,17 +59,6 @@ class Bot(Client):
             except Exception as e:
                 LOGGER(__name__).warning(f"Could not notify admin {admin_id}: {e}")
 
-        try:
-            web_app = web.Application()
-            web_app.router.add_get("/", lambda r: web.Response(text="CosmicBotz Running!"))
-            web_app.router.add_get("/health", lambda r: web.Response(text="OK"))
-            runner = web.AppRunner(web_app)
-            await runner.setup()
-            await web.TCPSite(runner, "0.0.0.0", PORT).start()
-            LOGGER(__name__).info(f"🌐 Web server running on port {PORT}")
-        except Exception as e:
-            LOGGER(__name__).error(f"Web server failed: {e}")
-
     async def stop(self, *args):
         await super().stop()
         LOGGER(__name__).info("⛔ Bot stopped.")
@@ -64,16 +68,23 @@ app = Bot()
 
 
 @app.on_message(filters.command("start"))
-async def start(client, message):
+async def cmd_start(client, message):
     LOGGER(__name__).info(f"✅ /start from {message.from_user.id}")
     await message.reply("👋 <b>Hello! CosmicBotz is working!</b>")
 
 
 @app.on_message(filters.command("ping"))
-async def ping(client, message):
+async def cmd_ping(client, message):
     LOGGER(__name__).info(f"✅ /ping from {message.from_user.id}")
     await message.reply("🏓 <b>Pong!</b>")
 
 
+# ── Entry point ───────────────────────────────────────────────────────────────
+async def main():
+    await start_web()        # web server first — Render health check passes
+    await app.start()        # then connect to Telegram
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    app.run()
+    asyncio.run(main())

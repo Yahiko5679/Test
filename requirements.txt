@@ -2,3 +2,10 @@ pyrofork==2.3.46     # ← bot framework (imports as pyrogram)
 TgCrypto==1.2.5      # ← faster encryption (required by pyrofork)
 aiohttp==3.9.5       # ← health server
 python-dotenv==1.0.1 # ← read .env file
+
+
+motor==3.5.0
+pymongo==4.8.0
+redis==5.0.8
+Pillow==10.4.0
+aiogram

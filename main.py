@@ -1,4 +1,3 @@
-from bot import main
-import asyncio
+from bot import Bot
 
-asyncio.run(main())
+Bot().run()

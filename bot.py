@@ -1,74 +1,65 @@
 import asyncio
 import logging
-import os
-import aiohttp
+from datetime import datetime
 from aiohttp import web
-from pyrogram import Client, filters, idle
+from pyrogram import Client
+from pyrogram.enums import ParseMode
+from Plugins import web_server
+from config import (
+    API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, PORT
+)
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
-logger = logging.getLogger(__name__)
 
-API_ID    = int(os.environ.get("API_ID", "0"))
-API_HASH  = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-PORT      = int(os.environ.get("PORT", "8080"))
+LOGGER = logging.getLogger
 
 
-async def clear_updates():
-    """Drop all pending updates so Pyrogram starts clean."""
-    base = f"https://api.telegram.org/bot{BOT_TOKEN}"
-    async with aiohttp.ClientSession() as session:
-        # delete webhook + drop pending
-        async with session.get(f"{base}/deleteWebhook?drop_pending_updates=true") as r:
-            data = await r.json()
-            logger.info(f"deleteWebhook: {data}")
-        # confirm zero pending
-        async with session.get(f"{base}/getWebhookInfo") as r:
-            data = await r.json()
-            logger.info(f"webhookInfo: {data['result']}")
+class Bot(Client):
+    def __init__(self):
+        super().__init__(
+            name="CosmicBotz",
+            api_id=API_ID,
+            api_hash=API_HASH,
+            bot_token=BOT_TOKEN,
+            workers=200,
+            plugins={"root": "Plugins"},
+        )
 
+    async def start(self):
+        await super().start()
+        me = await self.get_me()
+        self.username = me.username
+        self.uptime = datetime.now()
+        self.set_parse_mode(ParseMode.HTML)
 
-app = Client(
-    name="CosmicBotz",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-)
+        LOGGER(__name__).info(f"✅ Bot started as @{self.username}")
 
+        # Notify owner
+        for admin_id in ADMIN_IDS:
+            try:
+                await self.send_message(
+                    chat_id=admin_id,
+                    text="<b><blockquote>🤖 CosmicBotz Started ✅</blockquote></b>",
+                )
+            except Exception as e:
+                LOGGER(__name__).warning(f"Could not notify admin {admin_id}: {e}")
 
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    logger.info(f"✅ /start from {message.from_user.id}")
-    await message.reply("👋 Hello! Bot is working!")
+        # Start web server
+        try:
+            runner = web.AppRunner(await web_server())
+            await runner.setup()
+            await web.TCPSite(runner, "0.0.0.0", PORT).start()
+            LOGGER(__name__).info(f"🌐 Web server running on port {PORT}")
+        except Exception as e:
+            LOGGER(__name__).error(f"Web server failed: {e}")
 
-
-@app.on_message(filters.command("ping"))
-async def ping(client, message):
-    logger.info(f"✅ /ping from {message.from_user.id}")
-    await message.reply("🏓 Pong!")
-
-
-async def health_server():
-    web_app = web.Application()
-    web_app.router.add_get("/", lambda r: web.Response(text="OK"))
-    web_app.router.add_get("/health", lambda r: web.Response(text="OK"))
-    runner = web.AppRunner(web_app)
-    await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", PORT).start()
-    logger.info(f"Health server on port {PORT}")
-
-
-async def main():
-    await clear_updates()   # flush stuck updates FIRST
-    await health_server()
-    await app.start()
-    me = await app.get_me()
-    logger.info(f"✅ Bot started as @{me.username}")
-    await idle()
+    async def stop(self, *args):
+        await super().stop()
+        LOGGER(__name__).info("⛔ Bot stopped.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    Bot().run()

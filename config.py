@@ -3,21 +3,29 @@ CosmicBotz — Configuration
 All values loaded from environment / .env file.
 """
 import os
+import sys
+
+# Set working directory to project root FIRST — before anything else imports
+# This ensures Pyrogram can find the plugins folder as a Python module
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+os.chdir(_ROOT)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
-API_ID       = int(os.getenv("API_ID", "0"))
+API_ID       = int(os.getenv("API_ID", ""))
 API_HASH     = os.getenv("API_HASH", "")
 BOT_TOKEN    = os.getenv("BOT_TOKEN", "")
-BOT_USERNAME = os.getenv("BOT_USERNAME", "CosmicBotz")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "")
 
 # ── Admins ────────────────────────────────────────────────────────────────────
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "0").split(",") if x.strip()]
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 
 # ── Database ──────────────────────────────────────────────────────────────────
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI", "")
 REDIS_URL  = os.getenv("REDIS_URL", "")
 
 # ── External APIs ─────────────────────────────────────────────────────────────

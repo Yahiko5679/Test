@@ -1,19 +1,19 @@
-import asyncio
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 import logging
 from datetime import datetime
 from aiohttp import web
-from pyrogram import Client
+from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
-from Plugins import web_server
-from config import (
-    API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, PORT
-)
+from config import API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, PORT
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
-
 LOGGER = logging.getLogger
 
 
@@ -25,7 +25,6 @@ class Bot(Client):
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
             workers=200,
-            plugins={"root": "Plugins"},
         )
 
     async def start(self):
@@ -34,10 +33,8 @@ class Bot(Client):
         self.username = me.username
         self.uptime = datetime.now()
         self.set_parse_mode(ParseMode.HTML)
-
         LOGGER(__name__).info(f"✅ Bot started as @{self.username}")
 
-        # Notify owner
         for admin_id in ADMIN_IDS:
             try:
                 await self.send_message(
@@ -47,9 +44,11 @@ class Bot(Client):
             except Exception as e:
                 LOGGER(__name__).warning(f"Could not notify admin {admin_id}: {e}")
 
-        # Start web server
         try:
-            runner = web.AppRunner(await web_server())
+            web_app = web.Application()
+            web_app.router.add_get("/", lambda r: web.Response(text="CosmicBotz Running!"))
+            web_app.router.add_get("/health", lambda r: web.Response(text="OK"))
+            runner = web.AppRunner(web_app)
             await runner.setup()
             await web.TCPSite(runner, "0.0.0.0", PORT).start()
             LOGGER(__name__).info(f"🌐 Web server running on port {PORT}")
@@ -61,5 +60,20 @@ class Bot(Client):
         LOGGER(__name__).info("⛔ Bot stopped.")
 
 
+app = Bot()
+
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    LOGGER(__name__).info(f"✅ /start from {message.from_user.id}")
+    await message.reply("👋 <b>Hello! CosmicBotz is working!</b>")
+
+
+@app.on_message(filters.command("ping"))
+async def ping(client, message):
+    LOGGER(__name__).info(f"✅ /ping from {message.from_user.id}")
+    await message.reply("🏓 <b>Pong!</b>")
+
+
 if __name__ == "__main__":
-    Bot().run()
+    app.run()

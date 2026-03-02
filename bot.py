@@ -5,10 +5,12 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import asyncio
 import logging
+import json
 from datetime import datetime
 from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
+from pyrogram.types import Update
 from config import API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, PORT
 
 logging.basicConfig(
@@ -17,21 +19,9 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger
 
-
-# ── Web server (starts FIRST so Render health check passes) ───────────────────
-web_app = web.Application()
-web_app.router.add_get("/", lambda r: web.Response(text="CosmicBotz Running!"))
-web_app.router.add_get("/health", lambda r: web.Response(text="OK"))
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")  # https://luffy-auto-post.onrender.com
 
 
-async def start_web():
-    runner = web.AppRunner(web_app)
-    await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", PORT).start()
-    LOGGER(__name__).info(f"🌐 Web server running on port {PORT}")
-
-
-# ── Bot ───────────────────────────────────────────────────────────────────────
 class Bot(Client):
     def __init__(self):
         super().__init__(
@@ -79,10 +69,45 @@ async def cmd_ping(client, message):
     await message.reply("🏓 <b>Pong!</b>")
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Webhook handler ───────────────────────────────────────────────────────────
+async def handle_update(request):
+    try:
+        data = await request.json()
+        LOGGER(__name__).info(f"📩 Update: {json.dumps(data)[:200]}")
+        await app.handle_update(data)
+    except Exception as e:
+        LOGGER(__name__).error(f"Update error: {e}")
+    return web.Response(text="OK")
+
+
+async def set_webhook():
+    import aiohttp as http
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    webhook = f"{WEBHOOK_URL}/webhook"
+    async with http.ClientSession() as session:
+        async with session.post(url, json={"url": webhook, "drop_pending_updates": True}) as r:
+            result = await r.json()
+            LOGGER(__name__).info(f"setWebhook → {result}")
+
+
 async def main():
-    await start_web()        # web server first — Render health check passes
-    await app.start()        # then connect to Telegram
+    # Start web server first so Render health check passes immediately
+    web_application = web.Application()
+    web_application.router.add_get("/", lambda r: web.Response(text="CosmicBotz Running!"))
+    web_application.router.add_get("/health", lambda r: web.Response(text="OK"))
+    web_application.router.add_post("/webhook", handle_update)
+
+    runner = web.AppRunner(web_application)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", PORT).start()
+    LOGGER(__name__).info(f"🌐 Web server on port {PORT}")
+
+    # Start bot
+    await app.start()
+
+    # Register webhook with Telegram
+    await set_webhook()
+
     await asyncio.Event().wait()
 
 
